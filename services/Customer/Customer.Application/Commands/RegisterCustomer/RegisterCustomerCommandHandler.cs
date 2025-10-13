@@ -28,7 +28,7 @@ public class RegisterCustomerCommandHandler : IRequestHandler<RegisterCustomerCo
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
         // Müşteri oluşturma
-        var customer = new Customer(
+        var customer = new Customer.Domain.Entities.Customer(
             request.Email,
             request.FirstName,
             request.LastName,
@@ -46,7 +46,7 @@ public class RegisterCustomerCommandHandler : IRequestHandler<RegisterCustomerCo
             Email = savedCustomer.Email,
             FirstName = savedCustomer.FirstName,
             LastName = savedCustomer.LastName,
-            PhoneNumber = savedCustomer.PhoneNumber,
+            Phone = savedCustomer.PhoneNumber,
             CreatedAt = savedCustomer.CreatedAt,
             IsActive = savedCustomer.IsActive
         };
