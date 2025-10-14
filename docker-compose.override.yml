@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Override for local development
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: websale
+      POSTGRES_USER: websale
+      POSTGRES_PASSWORD: websale123
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  kafka:
+    ports:
+      - "9092:9092"
+
+  # API Gateway
+  api-gateway:
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+
+  # Microservices - Catalog
+  catalog-service:
+    ports:
+      - "5001:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=localhost;Database=catalog;Username=websale;Password=websale123
+      - Redis__ConnectionString=localhost:6379
+      - Kafka__BootstrapServers=localhost:9092
+
+  # Microservices - Inventory
+  inventory-service:
+    ports:
+      - "5002:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=localhost;Database=inventory;Username=websale;Password=websale123
+      - Redis__ConnectionString=localhost:6379
+      - Kafka__BootstrapServers=localhost:9092
+
+  # Microservices - Cart
+  cart-service:
+    ports:
+      - "5003:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=localhost;Database=cart;Username=websale;Password=websale123
+      - Redis__ConnectionString=localhost:6379
+      - Kafka__BootstrapServers=localhost:9092
+
+  # Microservices - Orders
+  orders-service:
+    ports:
+      - "5004:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=orders;Username=websale;Password=websale123
+      - Redis__ConnectionString=redis:6379
+      - Kafka__BootstrapServers=kafka:9092
+
+  # Microservices - Payments
+  payments-service:
+    ports:
+      - "5005:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=payments;Username=websale;Password=websale123
+      - Redis__ConnectionString=redis:6379
+      - Kafka__BootstrapServers=kafka:9092
+
+  # Microservices - Shipping
+  shipping-service:
+    ports:
+      - "5006:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=localhost;Database=shipping;Username=websale;Password=websale123
+      - Redis__ConnectionString=localhost:6379
+      - Kafka__BootstrapServers=localhost:9092
+
+  # Microservices - Customers
+  customers-service:
+    ports:
+      - "5007:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=customers;Username=websale;Password=websale123
+      - Redis__ConnectionString=redis:6379
+      - Kafka__BootstrapServers=kafka:9092
+
+  # Monitoring
+  prometheus:
+    ports:
+      - "9090:9090"
+
+  grafana:
+    ports:
+      - "3000:3000"

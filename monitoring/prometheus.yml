@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'catalog-service'
+    static_configs:
+      - targets: ['catalog-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'inventory-service'
+    static_configs:
+      - targets: ['inventory-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'cart-service'
+    static_configs:
+      - targets: ['cart-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'orders-service'
+    static_configs:
+      - targets: ['orders-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'payments-service'
+    static_configs:
+      - targets: ['payments-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'shipping-service'
+    static_configs:
+      - targets: ['shipping-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'customers-service'
+    static_configs:
+      - targets: ['customers-service:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:80']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
