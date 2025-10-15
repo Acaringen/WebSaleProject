@@ -24,14 +24,19 @@ public class CatalogDbContext : DbContext
             entity.Property(p => p.Sku).IsRequired().HasMaxLength(50);
             entity.Property(p => p.Category).IsRequired().HasMaxLength(100);
             entity.Property(p => p.Brand).IsRequired().HasMaxLength(100);
-            entity.Property(p => p.Images).HasConversion(
-                v => string.Join(',', v),
-                v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
-            );
-            entity.Property(p => p.Attributes).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new Dictionary<string, string>()
-            );
+            entity.Property(p => p.Images)
+                .HasConversion(
+                    v => string.Join(',', v),
+                    v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                )
+                .Metadata.SetValueComparer(ValueComparers.StringListComparer);
+
+            entity.Property(p => p.Attributes)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new Dictionary<string, string>()
+                )
+                .Metadata.SetValueComparer(ValueComparers.StringDictionaryComparer);
             entity.Property(p => p.IsActive).IsRequired();
             entity.Property(p => p.CreatedAt).IsRequired();
             entity.Property(p => p.UpdatedAt);

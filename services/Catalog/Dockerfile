@@ -5,29 +5,24 @@ EXPOSE 80
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy shared abstractions
-COPY ["shared/abstractions/WebSale.Shared.Abstractions.csproj", "shared/abstractions/"]
-
-# Copy project files
+# Copy project files for restore
 COPY ["services/Catalog/Catalog.Api/Catalog.Api.csproj", "services/Catalog/Catalog.Api/"]
 COPY ["services/Catalog/Catalog.Application/Catalog.Application.csproj", "services/Catalog/Catalog.Application/"]
 COPY ["services/Catalog/Catalog.Domain/Catalog.Domain.csproj", "services/Catalog/Catalog.Domain/"]
 COPY ["services/Catalog/Catalog.Infrastructure/Catalog.Infrastructure.csproj", "services/Catalog/Catalog.Infrastructure/"]
+COPY ["shared/abstractions/WebSale.Shared.Abstractions.csproj", "shared/abstractions/"]
 
 # Restore dependencies
 RUN dotnet restore "services/Catalog/Catalog.Api/Catalog.Api.csproj"
 
-# Copy everything else
+# Copy all source code
 COPY . .
 
-# Build
-WORKDIR "/src/services/Catalog/Catalog.Api"
-RUN dotnet build "Catalog.Api.csproj" -c Release -o /app/build
+# Publish
+WORKDIR /src/services/Catalog/Catalog.Api
+RUN dotnet publish "Catalog.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-FROM build AS publish
-RUN dotnet publish "Catalog.Api.csproj" -c Release -o /app/publish
-
-FROM base AS final
+FROM base AS runtime
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "Catalog.Api.dll"]

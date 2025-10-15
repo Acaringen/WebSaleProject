@@ -1,4 +1,6 @@
 using Catalog.Application.Commands.CreateProduct;
+using Catalog.Application.Commands.UpdateProduct;
+using Catalog.Application.Commands.DeleteProduct;
 using Catalog.Application.Queries.GetProduct;
 using Catalog.Application.Queries.GetProducts;
 using Catalog.Domain.Repositories;
@@ -8,12 +10,27 @@ using Catalog.Infrastructure.Services;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Serilog;
 using StackExchange.Redis;
 using System.Reflection;
 using WebSale.Shared.Abstractions.DTOs.Catalog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Detect if running in container
+var isRunningInContainer = bool.TryParse(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), out var inContainer) && inContainer;
+
+// Add container-specific configuration if running in Docker
+if (isRunningInContainer)
+{
+    builder.Configuration.AddJsonFile("appsettings.Container.json", optional: true, reloadOnChange: true);
+    Console.WriteLine("🐳 Running in container mode - using appsettings.Container.json");
+}
+else
+{
+    Console.WriteLine("💻 Running in local mode - using appsettings.Development.json");
+}
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -30,14 +47,37 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Database
+// Database with retry logic
 builder.Services.AddDbContext<CatalogDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("DefaultConnection is not configured.");
+    
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+    {
+        // Enable retry on failure with exponential backoff
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorCodesToAdd: null
+        );
+        // Set command timeout
+        npgsqlOptions.CommandTimeout(30);
+    });
+    
+    // Log sensitive data only in Development
+    if (builder.Environment.IsDevelopment() && !isRunningInContainer)
+    {
+        options.EnableSensitiveDataLogging();
+        options.EnableDetailedErrors();
+    }
+});
 
 // Redis
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("Redis");
+    var connectionString = builder.Configuration.GetConnectionString("Redis") 
+        ?? throw new InvalidOperationException("Redis connection string is not configured.");
     return ConnectionMultiplexer.Connect(connectionString);
 });
 
@@ -66,9 +106,11 @@ builder.Services.AddCors(options =>
 });
 
 // Health Checks
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis") 
+    ?? throw new InvalidOperationException("Redis connection string is not configured.");
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<CatalogDbContext>()
-    .AddRedis(builder.Configuration.GetConnectionString("Redis"))
+    .AddRedis(redisConnectionString)
     .AddCheck("kafka", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Kafka connection check"));
 
 var app = builder.Build();
@@ -123,6 +165,29 @@ app.MapGet("/api/products", async (IMediator mediator, string? category, string?
 .WithName("GetProducts")
 .WithOpenApi();
 
+app.MapPut("/api/products/{id:guid}", async (Guid id, UpdateProductCommand command, IMediator mediator) =>
+{
+    // Ensure ID from route matches command
+    if (id != command.Id)
+    {
+        return Results.BadRequest("Product ID mismatch");
+    }
+    
+    var result = await mediator.Send(command);
+    return result.IsSuccess ? Results.Ok(result.Value) : Results.NotFound(result.Error);
+})
+.WithName("UpdateProduct")
+.WithOpenApi();
+
+app.MapDelete("/api/products/{id:guid}", async (Guid id, IMediator mediator) =>
+{
+    var command = new DeleteProductCommand(id);
+    var result = await mediator.Send(command);
+    return result.IsSuccess ? Results.NoContent() : Results.NotFound(result.Error);
+})
+.WithName("DeleteProduct")
+.WithOpenApi();
+
 // Dashboard statistics endpoint
 app.MapGet("/api/dashboard/stats", async (CatalogDbContext context) =>
 {
@@ -154,11 +219,51 @@ app.MapGet("/api/dashboard/stats", async (CatalogDbContext context) =>
 .WithName("GetDashboardStats")
 .WithOpenApi();
 
-// Ensure database is created
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
-    await context.Database.EnsureCreatedAsync();
-}
+// Initialize database with retry logic
+await InitializeDatabaseAsync(app.Services);
 
 app.Run();
+
+// Database initialization helper method
+static async Task InitializeDatabaseAsync(IServiceProvider services)
+{
+    const int maxRetries = 10;
+    const int delayMilliseconds = 3000;
+
+    for (int retry = 0; retry < maxRetries; retry++)
+    {
+        try
+        {
+            using var scope = services.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+            logger.LogInformation("Attempting to connect to database (attempt {Retry}/{MaxRetries})...", retry + 1, maxRetries);
+
+            // Test connection
+            await context.Database.CanConnectAsync();
+            
+            // Ensure database is created (or apply migrations if you prefer)
+            await context.Database.EnsureCreatedAsync();
+            
+            logger.LogInformation("✅ Database connection successful and initialized.");
+            return;
+        }
+        catch (NpgsqlException ex) when (retry < maxRetries - 1)
+        {
+            var logger = services.CreateScope().ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning(ex, "⚠️ Database connection failed (attempt {Retry}/{MaxRetries}). Retrying in {Delay}ms...", 
+                retry + 1, maxRetries, delayMilliseconds);
+            
+            await Task.Delay(delayMilliseconds * (retry + 1)); // Exponential backoff
+        }
+        catch (Exception ex)
+        {
+            var logger = services.CreateScope().ServiceProvider.GetRequiredService<ILogger<Program>>();
+            logger.LogError(ex, "❌ Fatal error during database initialization.");
+            throw;
+        }
+    }
+
+    throw new InvalidOperationException($"Could not connect to database after {maxRetries} attempts.");
+}

@@ -5,26 +5,24 @@ EXPOSE 80
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy project files
-COPY ["Cart.Api/Cart.Api.csproj", "Cart.Api/"]
-COPY ["Cart.Application/Cart.Application.csproj", "Cart.Application/"]
-COPY ["Cart.Domain/Cart.Domain.csproj", "Cart.Domain/"]
-COPY ["Cart.Infrastructure/Cart.Infrastructure.csproj", "Cart.Infrastructure/"]
+# Copy project files for restore
+COPY ["services/Cart/Cart.Api/Cart.Api.csproj", "services/Cart/Cart.Api/"]
+COPY ["services/Cart/Cart.Application/Cart.Application.csproj", "services/Cart/Cart.Application/"]
+COPY ["services/Cart/Cart.Domain/Cart.Domain.csproj", "services/Cart/Cart.Domain/"]
+COPY ["services/Cart/Cart.Infrastructure/Cart.Infrastructure.csproj", "services/Cart/Cart.Infrastructure/"]
+COPY ["shared/abstractions/WebSale.Shared.Abstractions.csproj", "shared/abstractions/"]
 
 # Restore dependencies
-RUN dotnet restore "Cart.Api/Cart.Api.csproj"
+RUN dotnet restore "services/Cart/Cart.Api/Cart.Api.csproj"
 
-# Copy everything else
+# Copy all source code
 COPY . .
 
-# Build
-WORKDIR "/src/Cart.Api"
-RUN dotnet build "Cart.Api.csproj" -c Release -o /app/build
+# Publish
+WORKDIR /src/services/Cart/Cart.Api
+RUN dotnet publish "Cart.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-FROM build AS publish
-RUN dotnet publish "Cart.Api.csproj" -c Release -o /app/publish
-
-FROM base AS final
+FROM base AS runtime
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "Cart.Api.dll"]

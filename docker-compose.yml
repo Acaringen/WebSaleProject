@@ -74,6 +74,7 @@ services:
       - "5001:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_RUNNING_IN_CONTAINER=true
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=catalog;Username=websale;Password=websale123
       - Redis__ConnectionString=redis:6379
       - Kafka__BootstrapServers=kafka:9092
